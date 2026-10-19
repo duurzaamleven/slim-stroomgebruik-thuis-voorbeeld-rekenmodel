@@ -1,0 +1,7 @@
+station_id,naam,lat__degN,lon__degE
+st_nw,noordwest,53.0,4.0
+st_no,noordoost,53.2,6.9
+st_zw,zuidwest,51.2,3.6
+st_zo,zuidoost,50.9,5.9
+st_mid,midden,52.1,5.3
+st_w,west,52.3,4.8

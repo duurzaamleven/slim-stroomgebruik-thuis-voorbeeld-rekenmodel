@@ -1,0 +1,6 @@
+numpy>=1.26
+pandas>=2.1
+# zoneinfo (stdlib, Python 3.9+) heeft op Windows geen ingebouwde tijdzone-
+# database; tzdata levert die. Op Linux/macOS is dit meestal al aanwezig via
+# het systeem, maar het pakket is daar ook onschadelijk.
+tzdata>=2024.1; sys_platform == "win32"

@@ -1,0 +1,8 @@
+-r requirements.txt
+pytest>=8.0
+
+# Testafhankelijkheid, geen kernafhankelijkheid: alleen gebruikt in
+# tests/test_geo.py om kern/geo.py te toetsen tegen
+# scipy.interpolate.RBFInterpolator. kern/ zelf importeert nooit scipy, zie
+# distributie/allowlist.py en distributie/test_allowlist.py.
+scipy>=1.11

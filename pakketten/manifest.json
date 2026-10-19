@@ -1,0 +1,67 @@
+{
+  "let_op": "Alle data in dit pakket is SYNTHETISCH EN VERZONNEN, en dit is een MINIMAAL TESTFIXTURE: twee weken in plaats van een heel jaar, en met opzet GEEN realistische pieken. Het bestaat uitsluitend om de tests en de CLI van deze repo offline te laten draaien. Het echte, herverspreidbare weerpakket (KNMI, CC-BY-4.0) staat in de aparte repo slim-stroomgebruik-thuis-datapakketten (nog niet openbaar). Zie pakketten/LEESMIJ.md.",
+  "pakketten": [
+    {
+      "naam": "weer/synthetisch-uur",
+      "versie": 3,
+      "landelijk": true,
+      "let_op_landelijk": "Dit pakket is LANDELIJK: alle meetpunten tegelijk, geen reeks per locatie (privacykeuze, zie kern/behoeften.py en kern/geo.py). De afnemer interpoleert zelf naar zijn eigen lat/lon; het pakket zelf draagt daarom geen doellocatie.",
+      "bestand": "weer_synthetisch_testfixture_2023.csv",
+      "sha256": "8df9d9e04e17c3c7d20a0afeb0ccadc63d2d75da6680dbc40b6b105517c154d5",
+      "omvang_bytes": 94617,
+      "stations_bestand": "weer_synthetisch_testfixture_stations_2023.csv",
+      "stations_sha256": "67a4f1a0011dbc18bd76f7dc2d75c4a41c32f56e4eb407318ac619921a5b4a60",
+      "stations_omvang_bytes": 183,
+      "dekking": {
+        "kalenderjaar": 2023,
+        "interval_min": 60,
+        "locatie": "landelijk: 6 synthetische meetpunten verspreid over een NL-achtige rechthoek (zie het stations_bestand), geen locatiespecifieke dekking",
+        "periode": "1 t/m 14 maart 2023 (twee weken), NIET het hele kalenderjaar"
+      },
+      "geldig_vanaf": "2023-03-01T00:00:00+01:00",
+      "geldig_tot": "2023-03-15T00:00:00+01:00",
+      "kolommen": [
+        "station_id",
+        "tijdstip",
+        "temperatuur__degC",
+        "instraling__W_m_2",
+        "windsnelheid__m_s"
+      ],
+      "stations_kolommen": [
+        "station_id",
+        "naam",
+        "lat__degN",
+        "lon__degE"
+      ],
+      "aantal_stations": 6,
+      "rijen": 2016,
+      "synthetisch": true,
+      "testfixture": true,
+      "testfixture_reden": "minimaal testfixture (ontwerpdocument §6): kort genoeg om niemand op het idee te brengen er iets mee te berekenen, met opzet zonder realistische pieken (straling piekt hier op 480 W/m2, temperatuur ruwweg 1-11 degC, wind 3,1-4,0 m/s, vergelijk met de echte extremen 900-1000 W/m2, -10 tot +35 degC en >15 m/s wind in het KNMI-pakket). Ook de ruimtelijke variatie tussen de 6 meetpunten is klein en verzonnen, precies genoeg om kern/geo.py offline te kunnen toetsen, niet om als weerbeeld te dienen. Het echte, landelijke weerpakket (22 KNMI-meetpunten, een heel jaar) staat in slim-stroomgebruik-thuis-datapakketten (nog niet openbaar)."
+    },
+    {
+      "naam": "prijzen/synthetisch-placeholder",
+      "versie": 2,
+      "bestand": "prijzen_synthetisch_testfixture_placeholder_2023.csv",
+      "sha256": "64fde51a061be97e34d37edad5ab1acd0aa2215050d5e2fc859754f3797a72ef",
+      "omvang_bytes": 10777,
+      "dekking": {
+        "kalenderjaar": 2023,
+        "interval_min": 60,
+        "locatie": "landelijk (geen locatieafhankelijkheid)",
+        "periode": "1 t/m 14 maart 2023 (twee weken), NIET het hele kalenderjaar"
+      },
+      "geldig_vanaf": "2023-03-01T00:00:00+01:00",
+      "geldig_tot": "2023-03-15T00:00:00+01:00",
+      "kolommen": [
+        "tijdstip",
+        "prijs__EUR_kWh"
+      ],
+      "rijen": 336,
+      "synthetisch": true,
+      "testfixture": true,
+      "placeholder_reden": "wacht op een besluit over het ENTSO-E-spoor voor echte day-ahead-prijzen; zie ontwerpdocument §6.",
+      "testfixture_reden": "minimaal testfixture, twee weken in plaats van een heel jaar; zie pakketten/LEESMIJ.md."
+    }
+  ]
+}

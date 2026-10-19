@@ -1,0 +1,13 @@
+__pycache__/
+*.pyc
+.pytest_cache/
+.venv/
+venv/
+*.egg-info/
+.cache_schil.pkl
+.vscode/
+.idea/
+
+# Modelbijsluiter: nog niet openbaar. Blijft buiten git tot de review is gedaan en de licentie van
+# de bijsluiter zelf is vastgesteld (voorgenomen CC-BY-4.0).
+documentatie/modelbijsluiter/

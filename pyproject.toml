@@ -1,0 +1,5 @@
+[tool.pytest.ini_options]
+# Repo-root op sys.path zodat "import kern" werkt vanuit elke testmap,
+# zonder dat kern/ of tests/ een geïnstalleerd package hoeft te zijn.
+pythonpath = ["."]
+testpaths = ["tests", "distributie"]
