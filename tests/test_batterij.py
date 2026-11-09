@@ -82,3 +82,27 @@ def test_prijssignaal_zonder_prijsreeks_geeft_fout():
     params = BatterijParameters(stuurregel__cat="prijssignaal")
     with pytest.raises(ValueError):
         simuleer_batterij(pv__W, vraag__W, 60, params, prijs__EUR_kWh=None)
+
+
+@pytest.mark.parametrize("stuurregel__cat", ["eigen_verbruik", "prijssignaal"])
+def test_netafname_teken(stuurregel__cat):
+    """Laden verhoogt de netafname, ontladen verlaagt hem: afname = vraag - pv + laden - ontladen."""
+    pv__W, vraag__W = _maak_reeksen(seed=2)
+    idx = pv__W.index
+    prijs__EUR_kWh = pd.Series(0.15 + 0.10 * np.sin(np.linspace(0, 6 * np.pi, len(idx))), index=idx)
+    params = BatterijParameters(
+        capaciteit__kWh=8.0, laadvermogen__W=3000.0, ontlaadvermogen__W=3000.0,
+        soc_min__0=0.1, soc_max__0=0.9, soc_initieel__0=0.5, retourrendement__W0=0.9,
+        stuurregel__cat=stuurregel__cat,
+    )
+    uitkomst, verwerkt = simuleer_batterij(pv__W, vraag__W, 60, params, prijs__EUR_kWh=prijs__EUR_kWh)
+    assert uitkomst.laadvermogen__W.sum() > 0 and uitkomst.ontlaadvermogen__W.sum() > 0
+
+    verwacht__W = (vraag__W.iloc[:verwerkt] - pv__W.iloc[:verwerkt]
+                   + uitkomst.laadvermogen__W - uitkomst.ontlaadvermogen__W)
+    np.testing.assert_allclose(uitkomst.net_afname__W.to_numpy(), verwacht__W.to_numpy(), atol=1e-9)
+
+    # Eigen verbruik: de batterij verkleint teruglevering en afname, dus |afname| daalt per saldo.
+    if stuurregel__cat == "eigen_verbruik":
+        zonder__W = vraag__W.iloc[:verwerkt] - pv__W.iloc[:verwerkt]
+        assert uitkomst.net_afname__W.abs().sum() < zonder__W.abs().sum()

@@ -164,7 +164,7 @@ def simuleer_batterij(
     soc__0 = soc__0[:verwerkt]
     laad__W = laad__W[:verwerkt]
     ontlaad__W = ontlaad__W[:verwerkt]
-    net_afname__W = vraag[:verwerkt] - pv[:verwerkt] - laad__W + ontlaad__W
+    net_afname__W = vraag[:verwerkt] - pv[:verwerkt] + laad__W - ontlaad__W
 
     idx = pv_ac__W.index[:verwerkt]
     uitkomst = BatterijUitkomst(
