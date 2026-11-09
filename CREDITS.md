@@ -58,3 +58,8 @@ pakket [`tzdata`](https://github.com/python/tzdata) (Python Software
 Foundation License) voor de tijdzonedatabase). Zie `requirements.txt` en
 `requirements-dev.txt` voor de volledige lijst inclusief testafhankelijkheden
 (waaronder `scipy`, alleen gebruikt in `tests/test_geo.py`, zie hierboven).
+
+## Gevonden fouten
+
+- **Teken van laden en ontladen in de netafname** (`kern/batterij.py`), gevonden door de
+  studenten van het project WattDeFlex (november 2026).
