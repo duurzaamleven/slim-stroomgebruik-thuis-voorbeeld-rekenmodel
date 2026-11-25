@@ -4,3 +4,8 @@ pandas>=2.1
 # database; tzdata levert die. Op Linux/macOS is dit meestal al aanwezig via
 # het systeem, maar het pakket is daar ook onschadelijk.
 tzdata>=2024.1; sys_platform == "win32"
+
+# Alleen voor de schil (schil/cli.py): de weerpakketten in
+# slim-stroomgebruik-thuis-datapakketten zijn parquet. De kern importeert
+# pyarrow niet (zie distributie/allowlist.py).
+pyarrow>=15

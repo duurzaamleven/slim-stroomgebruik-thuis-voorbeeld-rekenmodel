@@ -22,7 +22,11 @@ import pandas as pd
 #: incompatibele wijziging van SimulatieParameters of SimulatieUitvoer.
 #: 2.0.0: ``weerdata`` is nu een landelijk (meerstations) pakket en vereist
 #: het nieuwe, verplichte gezelschapsargument ``weerstations`` (zie ``kern.geo``).
-CONTRACT_VERSIE = "2.0.0"
+#: 2.1.0: het behoefteplan vraagt het echte KNMI-weerpakket van het kalenderjaar
+#: (``weer/knmi-nl-JJJJ``); nieuw is ``kern.weerpakket.knmi_weerpakket_naar_kern``,
+#: en gaten in het weerpakket worden per tijdstip om het ontbrekende meetpunt
+#: heen geïnterpoleerd. ``simuleer`` zelf neemt dezelfde argumenten als in 2.0.0.
+CONTRACT_VERSIE = "2.1.0"
 
 #: Status van een simulatie-uitkomst. "voltooid" = normale uitkomst;
 #: "onvolledig" = een verplichte behoefte ontbrak, er is niet gerekend (zie

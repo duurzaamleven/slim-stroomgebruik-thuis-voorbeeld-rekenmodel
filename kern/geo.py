@@ -181,3 +181,56 @@ def interpoleer(waarden: np.ndarray, gewichten: np.ndarray) -> np.ndarray:
             f"waarden moet vorm (t, {gewichten.shape[0]}) hebben (t tijdstippen, "
             f"evenveel stations als gewichten), kreeg vorm {waarden.shape}")
     return waarden @ gewichten
+
+
+def interpoleer_met_gaten(
+    waarden: np.ndarray,
+    stations__deg: np.ndarray,
+    doel_lat__degN: float,
+    doel_lon__degE: float,
+) -> np.ndarray:
+    """Als :func:`interpoleer`, maar per tijdstip alleen met de meetpunten die er zijn.
+
+    Een echt weerpakket heeft gaten: bij het KNMI ontbreken bij enkele
+    meetpunten soms uren of dagen. Met :func:`interpoleer` zou zo'n gat bij
+    één meetpunt het hele tijdstip op de doellocatie ``NaN`` maken, ook al
+    zijn de andere 21 meetpunten er gewoon. Hier wordt voor elk tijdstip
+    geïnterpoleerd uit de meetpunten die op dat tijdstip een waarde hebben:
+    dezelfde thin-plate spline, maar dan over die deelverzameling.
+
+    Dat blijft goedkoop: het aantal verschillende patronen van ontbrekende
+    meetpunten is klein (bij een compleet pakket precies één), en per patroon
+    worden de gewichten één keer bepaald. Zonder gaten is de uitkomst gelijk
+    aan ``interpoleer(waarden, geo_gewichten(stations__deg, ...))``.
+
+    Een tijdstip met minder dan drie meetpunten blijft ``NaN``: daar valt
+    geen eenduidige spline door te leggen, en dat gat hoort zichtbaar te
+    blijven voor de aanroeper (zie ``kern.model``).
+
+    Parameters
+    ----------
+    waarden       : ``(t, n)`` array; ``NaN`` betekent: meetpunt ontbreekt.
+    stations__deg : ``(n, 2)`` array, per meetpunt ``[lat__degN, lon__degE]``.
+
+    Returns
+    -------
+    ``(t,)`` array met de geïnterpoleerde reeks op de doellocatie.
+    """
+    waarden = np.asarray(waarden, dtype=float)
+    stations__deg = np.asarray(stations__deg, dtype=float)
+    if waarden.ndim != 2 or waarden.shape[1] != stations__deg.shape[0]:
+        raise ValueError(
+            f"waarden moet vorm (t, {stations__deg.shape[0]}) hebben (t tijdstippen, "
+            f"evenveel meetpunten als stations__deg), kreeg vorm {waarden.shape}")
+
+    aanwezig = ~np.isnan(waarden)
+    uitkomst = np.full(waarden.shape[0], np.nan)
+    patronen, patroon_per_rij = np.unique(aanwezig, axis=0, return_inverse=True)
+    patroon_per_rij = np.asarray(patroon_per_rij).ravel()
+    for nummer, patroon in enumerate(patronen):
+        if patroon.sum() < _MIN_STATIONS:
+            continue
+        rijen = patroon_per_rij == nummer
+        gewichten = geo_gewichten(stations__deg[patroon], doel_lat__degN, doel_lon__degE)
+        uitkomst[rijen] = waarden[np.ix_(rijen, patroon)] @ gewichten
+    return uitkomst

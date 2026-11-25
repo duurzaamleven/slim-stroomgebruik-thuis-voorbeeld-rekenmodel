@@ -11,7 +11,7 @@ Ontwerpregels die hier zichtbaar worden
 * **Acquisitievrij**: ``simuleer`` accepteert weer-/prijsdata als parameter
   (``weerdata``, ``prijsdata__EUR_kWh``); hij haalt zelf niets op.
 * **Geospatiaal**: ``weerdata`` is een **landelijk** pakket (alle stations
-  tegelijk, zie ``kern.behoeften.WEERPAKKET_NAAM``); de kern interpoleert het
+  tegelijk, zie ``kern.behoeften.WEERPAKKET_NAAM_SJABLOON``); de kern interpoleert het
   zelf naar ``invoer.locatie_lat__degN``/``locatie_lon__degE`` (zie
   ``kern.geo`` en ``_interpoleer_weer_naar_locatie`` hieronder), zodat de
   locatie nooit naar de uitgever van het weerpakket hoeft.
@@ -34,9 +34,9 @@ import numpy as np
 import pandas as pd
 
 from .batterij import simuleer_batterij
-from .behoeften import WEERPAKKET_NAAM, behoeften
+from .behoeften import behoeften, weerpakket_naam
 from .cache import Cache
-from .geo import geo_gewichten, interpoleer
+from .geo import interpoleer_met_gaten
 from .parameters import SimulatieParameters
 from .pv import pv_ac_vermogen__W
 from .tijdas import bouw_tijd_as
@@ -82,21 +82,27 @@ def _interpoleer_weer_naar_locatie(
     weerstations: pd.DataFrame,
     doel_lat__degN: float,
     doel_lon__degE: float,
-) -> pd.DataFrame:
+) -> tuple[pd.DataFrame, int]:
     """Interpoleer een landelijk (meerstations) weerpakket naar één locatie.
 
     ``weerdata`` is een DataFrame met een 2-level kolom-``MultiIndex``:
     niveau 0 de grootheid (bv. ``"temperatuur__degC"``), niveau 1 het
     ``station_id`` (zoals bv. ``pandas.pivot_table`` dat oplevert als je een
-    lang-formaat CSV pivotteert op ``station_id``). ``weerstations`` is een
-    DataFrame, geïndexeerd op datzelfde ``station_id``, met de kolommen
-    ``lat__degN``/``lon__degE``.
+    lang-formaat CSV pivotteert op ``station_id``, of zoals
+    ``kern.weerpakket.knmi_weerpakket_naar_kern`` het KNMI-pakket aflevert).
+    ``weerstations`` is een DataFrame, geïndexeerd op datzelfde
+    ``station_id``, met de kolommen ``lat__degN``/``lon__degE``.
 
-    Dit is de plek waar ``kern.geo`` in de kern wordt aangesloten: de
-    gewichten worden hier precies één keer bepaald (``geo_gewichten``) en
-    daarna op elke grootheid toegepast (``interpoleer``); zie de
-    moduledocstring van ``kern.geo`` voor waarom dat exact, en niet slechts
-    een benadering, is.
+    Dit is de plek waar ``kern.geo`` in de kern wordt aangesloten. Per
+    patroon van aanwezige meetpunten worden de gewichten één keer bepaald;
+    bij een compleet pakket is dat één patroon en dus precies één set
+    gewichten voor het hele jaar (zie ``kern.geo.interpoleer_met_gaten``).
+
+    Returns
+    -------
+    ``(weer_op_locatie, aantal_tijdstippen_met_gat)``: het tweede getal telt
+    de tijdstippen waarop bij een of meer meetpunten een waarde ontbrak, zodat
+    ``simuleer`` dat kan melden.
     """
     station_ids = list(weerstations.index)
     ontbrekend = set(station_ids) - set(weerdata.columns.get_level_values(1))
@@ -105,13 +111,36 @@ def _interpoleer_weer_naar_locatie(
             f"weerstations noemt stations die niet in weerdata voorkomen: {sorted(ontbrekend)}")
 
     stations__deg = weerstations.loc[station_ids, [WEERSTATION_LAT, WEERSTATION_LON]].to_numpy(dtype=float)
-    gewichten = geo_gewichten(stations__deg, doel_lat__degN, doel_lon__degE)
 
     kolommen: dict[str, np.ndarray] = {}
+    met_gat = np.zeros(len(weerdata.index), dtype=bool)
     for grootheid in weerdata.columns.get_level_values(0).unique():
         waarden__t_n = weerdata[grootheid][station_ids].to_numpy(dtype=float)
-        kolommen[grootheid] = interpoleer(waarden__t_n, gewichten)
-    return pd.DataFrame(kolommen, index=weerdata.index)
+        met_gat |= np.isnan(waarden__t_n).any(axis=1)
+        kolommen[grootheid] = interpoleer_met_gaten(
+            waarden__t_n, stations__deg, doel_lat__degN, doel_lon__degE)
+    return pd.DataFrame(kolommen, index=weerdata.index), int(met_gat.sum())
+
+
+def _meld_weerdekking(weer_index: pd.DatetimeIndex, tijd_as: pd.DatetimeIndex, meld: Melder) -> None:
+    """Waarschuw als het weerpakket de tijd-as niet helemaal dekt.
+
+    Buiten de dekking trekt ``_reindex_naar_tijdas`` de eerste of laatste
+    waarde door. Voor het testfixture (twee weken) is dat bekend en bedoeld,
+    maar met een echt pakket van het verkeerde jaar zou het ongemerkt een
+    nietszeggende jaaruitkomst geven. Daarom altijd hardop.
+    """
+    if len(weer_index) == 0:
+        return
+    begin, eind = weer_index.min(), weer_index.max()
+    buiten = (tijd_as < begin) | (tijd_as > eind)
+    if buiten.any():
+        meld(Voortgang(
+            "weer",
+            f"het weerpakket dekt {begin} tot {eind}; voor {int(buiten.sum())} van de "
+            f"{len(tijd_as)} tijdstappen is de eerste of laatste waarde doorgetrokken",
+            ernst="waarschuwing",
+        ))
 
 
 def _synthetisch_basislastprofiel__W(index: pd.DatetimeIndex, interval_min: int,
@@ -202,7 +231,8 @@ def simuleer(
     """
     plan = behoeften(invoer)
     if weerdata is None:
-        meld(Voortgang("behoefteplan", f"verplichte behoefte ontbreekt: {WEERPAKKET_NAAM}",
+        weer_naam = weerpakket_naam(invoer.kalenderjaar)
+        meld(Voortgang("behoefteplan", f"verplichte behoefte ontbreekt: {weer_naam}",
                         ernst="waarschuwing"))
         return SimulatieUitvoer(
             contract_versie=CONTRACT_VERSIE,
@@ -214,7 +244,7 @@ def simuleer(
             aantal_intervallen=0,
             kolommen=[],
             metadata={"reden": "weerpakket ontbreekt"},
-            ontbrekende_behoeften=(WEERPAKKET_NAAM,),
+            ontbrekende_behoeften=(weer_naam,),
         )
     if weerstations is None:
         raise ValueError(
@@ -243,8 +273,15 @@ def simuleer(
         f"landelijk weerpakket ({weerdata.columns.get_level_values(1).nunique()} stations) "
         f"interpoleren naar locatie ({invoer.locatie_lat__degN:.4f}, {invoer.locatie_lon__degE:.4f})",
     ))
-    weer_op_locatie = _interpoleer_weer_naar_locatie(
+    weer_op_locatie, tijdstippen_met_gat = _interpoleer_weer_naar_locatie(
         weerdata, weerstations, invoer.locatie_lat__degN, invoer.locatie_lon__degE)
+    if tijdstippen_met_gat:
+        meld(Voortgang(
+            "weer",
+            f"op {tijdstippen_met_gat} tijdstippen ontbreekt een of meer meetpunten; daar is "
+            "geïnterpoleerd uit de meetpunten die er wel zijn",
+        ))
+    _meld_weerdekking(weer_op_locatie.index, index, meld)
 
     meld(Voortgang("weer", "weerpakket uitlijnen op de tijd-as"))
     weer_uitgelijnd = _reindex_naar_tijdas(weer_op_locatie, index)

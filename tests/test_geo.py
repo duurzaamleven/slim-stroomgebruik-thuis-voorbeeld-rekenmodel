@@ -155,3 +155,49 @@ def test_gelijk_aan_scipy_rbfinterpolator():
             max_afwijking = max(max_afwijking, abs(eigen_uitkomst - scipy_uitkomst))
 
     assert max_afwijking < 1e-9, f"afwijking t.o.v. scipy te groot: {max_afwijking:.3e}"
+
+
+# ── Interpoleren met gaten (een meetpunt dat op sommige tijdstippen ontbreekt) ──
+
+def test_met_gaten_zonder_gaten_gelijk_aan_interpoleer():
+    from kern.geo import interpoleer_met_gaten
+
+    rng = np.random.default_rng(5)
+    waarden = rng.normal(size=(30, len(_STATIONS__DEG)))
+    for lat, lon in _DOELLOCATIES:
+        w = geo_gewichten(_STATIONS__DEG, lat, lon)
+        np.testing.assert_allclose(
+            interpoleer_met_gaten(waarden, _STATIONS__DEG, lat, lon), interpoleer(waarden, w),
+            rtol=0, atol=1e-12)
+
+
+def test_met_gaten_gebruikt_alleen_de_aanwezige_meetpunten():
+    """Op een tijdstip met een gat is de uitkomst gelijk aan een interpolatie
+    over alleen de meetpunten die er die keer wél zijn (getoetst tegen scipy)."""
+    from kern.geo import interpoleer_met_gaten
+    scipy_interpolate = pytest.importorskip("scipy.interpolate")
+
+    rng = np.random.default_rng(6)
+    waarden = rng.normal(loc=10.0, scale=5.0, size=(4, len(_STATIONS__DEG)))
+    waarden[1, 0] = np.nan            # één meetpunt weg
+    waarden[2, [1, 4]] = np.nan       # twee meetpunten weg
+    lat, lon = 52.1326, 5.2913
+
+    uitkomst = interpoleer_met_gaten(waarden, _STATIONS__DEG, lat, lon)
+    assert not np.isnan(uitkomst).any()
+    for rij in range(len(waarden)):
+        aanwezig = ~np.isnan(waarden[rij])
+        rbf = scipy_interpolate.RBFInterpolator(
+            _STATIONS__DEG[aanwezig], waarden[rij, aanwezig],
+            kernel="thin_plate_spline", degree=1, smoothing=0.0)
+        assert uitkomst[rij] == pytest.approx(rbf(np.array([[lat, lon]]))[0], abs=1e-9)
+
+
+def test_met_gaten_minder_dan_drie_meetpunten_blijft_nan():
+    from kern.geo import interpoleer_met_gaten
+
+    waarden = np.ones((2, len(_STATIONS__DEG)))
+    waarden[0, 2:] = np.nan  # nog maar twee meetpunten over
+    uitkomst = interpoleer_met_gaten(waarden, _STATIONS__DEG, 52.0, 5.0)
+    assert np.isnan(uitkomst[0])
+    assert uitkomst[1] == pytest.approx(1.0)
