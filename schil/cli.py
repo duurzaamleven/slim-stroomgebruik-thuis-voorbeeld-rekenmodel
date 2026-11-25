@@ -6,7 +6,9 @@ Dit is de **enige** schil in deze repo (ontwerpdocument §9): één command-line
 programma dat aantoont dat de kern schil-onafhankelijk is. Alles wat hier
 staat, hoort bij de schil en NIET bij de kern:
 
-  * bestanden lezen (de datapakketten uit ``pakketten/``, tegen het manifest);
+  * bestanden lezen: het echte weerpakket uit een lokale kopie van de repo
+    ``slim-stroomgebruik-thuis-datapakketten`` (``--datapakketten``), met het
+    testfixture in ``pakketten/`` als terugval; altijd tegen het manifest;
   * een cache-implementatie (``BestandsCache``, hier een simpel bestand op
     schijf: het "bestand nu, IndexedDB straks" uit §4);
   * voortgang naar stdout schrijven;
@@ -19,12 +21,19 @@ verandert niet.
 
 Gebruik
 -------
-    python -m schil.cli --jaar 2023 --interval 60
+    python -m schil.cli --jaar 2024 --interval 60 --datapakketten ../slim-stroomgebruik-thuis-datapakketten
+
+Zonder ``--datapakketten`` zoekt de CLI de map in de omgevingsvariabele
+``DATAPAKKETTEN_MAP`` en daarna naast deze repo. Vindt hij daar het
+weerpakket van het gevraagde jaar niet, dan valt hij terug op het testfixture
+in ``pakketten/``, met een waarschuwing.
 """
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
+import os
 import pickle
 import signal
 import sys
@@ -51,9 +60,20 @@ from kern.model import simuleer
 from kern.parameters import BatterijParameters, PVVeld, SimulatieParameters
 from kern.uitvoer import CONTRACT_VERSIE
 from kern.voortgang import Voortgang
+from kern.weerpakket import knmi_weerpakket_naar_kern
 
 PAKKETTEN_DIR = Path(__file__).resolve().parent.parent / "pakketten"
 CACHE_BESTAND = Path(__file__).resolve().parent.parent / ".cache_schil.pkl"
+
+#: Standaardplek van de datapakketten: een lokale kopie van de repo naast deze repo.
+DATAPAKKETTEN_NAAST_REPO = (Path(__file__).resolve().parent.parent.parent
+                            / "slim-stroomgebruik-thuis-datapakketten")
+
+#: Naam en minimumversie van het weerpakket in het testfixture (``pakketten/``).
+#: Alleen de terugval van deze schil, voor offline tests en demo's: de kern
+#: zelf vraagt altijd het echte KNMI-pakket van het kalenderjaar.
+TESTFIXTURE_WEERPAKKET_NAAM = "weer/synthetisch-uur"
+TESTFIXTURE_WEERPAKKET_MINVERSIE = 3
 
 
 # ── Cache-implementatie: een simpel bestand op schijf ────────────────────────
@@ -90,8 +110,63 @@ class BestandsCache:
 
 # ── Pakketten inlezen + tegen het manifest matchen (§5.2) ────────────────────
 
-def _laad_manifest() -> dict:
-    return json.loads((PAKKETTEN_DIR / "manifest.json").read_text(encoding="utf-8"))
+def _laad_manifest(map_: Path = PAKKETTEN_DIR) -> dict:
+    return json.loads((map_ / "manifest.json").read_text(encoding="utf-8"))
+
+
+def zoek_datapakketten_map(opgegeven: str | None = None) -> Path | None:
+    """Waar staat de lokale kopie van ``slim-stroomgebruik-thuis-datapakketten``?
+
+    Volgorde: ``--datapakketten``, dan ``DATAPAKKETTEN_MAP``, dan de map naast
+    deze repo. ``None`` als er nergens een ``manifest.json`` staat.
+    """
+    for kandidaat in (opgegeven, os.environ.get("DATAPAKKETTEN_MAP"), DATAPAKKETTEN_NAAST_REPO):
+        if kandidaat and (Path(kandidaat) / "manifest.json").is_file():
+            return Path(kandidaat)
+    return None
+
+
+def zoek_pakket(manifest: dict, naam: str, minimumversie: int) -> dict | None:
+    """Als ``_match_pakket``, maar ``None`` in plaats van een fout als het pakket er niet is.
+
+    Een pakket zonder ``versie`` (het manifest van de datapakketten kent die
+    nog niet per pakket) telt als versie 1.
+    """
+    for pakket in manifest["pakketten"]:
+        if pakket["naam"] == naam:
+            if pakket.get("versie", 1) < minimumversie:
+                raise RuntimeError(
+                    f"pakket {naam!r} gevonden maar versie {pakket.get('versie', 1)} "
+                    f"< vereiste minimumversie {minimumversie}")
+            return pakket
+    return None
+
+
+def _kies_variant(pakket: dict, interval_min: int) -> dict:
+    """Kies de intervalvariant: precies het simulatie-interval als die er is,
+    anders de fijnste die er is. De kern interpoleert dan in de tijd; het veld
+    ``fijnere_intervallen`` in het manifest legt uit waarom er geen fijnere is."""
+    varianten = pakket["varianten"]
+    for variant in varianten:
+        if variant["interval_min"] == interval_min:
+            return variant
+    return min(varianten, key=lambda v: v["interval_min"])
+
+
+def lees_knmi_weerpakket(map_: Path, pakket: dict, interval_min: int) -> tuple[pd.DataFrame, pd.DataFrame]:
+    """Lees een KNMI-weerpakket uit de datapakketten en zet het om voor de kern.
+
+    Inlezen en de sha256 controleren is schilwerk; de omzetting naar de vorm
+    die ``simuleer`` verwacht is de pure functie
+    ``kern.weerpakket.knmi_weerpakket_naar_kern``.
+    """
+    variant = _kies_variant(pakket, interval_min)
+    pad = map_ / variant["bestand"]
+    werkelijk = hashlib.sha256(pad.read_bytes()).hexdigest()
+    if werkelijk != variant["sha256"]:
+        raise RuntimeError(f"{pad} wijkt af van het manifest (sha256 {werkelijk}, "
+                           f"verwacht {variant['sha256']})")
+    return knmi_weerpakket_naar_kern(pd.read_parquet(pad))
 
 
 def _match_pakket(manifest: dict, naam: str, minimumversie: int) -> dict:
@@ -177,6 +252,9 @@ def _bouw_argparser() -> argparse.ArgumentParser:
         description="Referentieschil van het voorbeeldrekenmodel (Kenniscentrum Duurzaam Leven; EUPL-1.2). "
                     "NIET geschikt om uitspraken over een echte woning mee te doen.")
     p.add_argument("--jaar", type=int, default=2023, help="kalenderjaar (standaard 2023)")
+    p.add_argument("--datapakketten", default=None,
+                    help="map met een lokale kopie van slim-stroomgebruik-thuis-datapakketten "
+                         "(standaard: DATAPAKKETTEN_MAP, anders de map naast deze repo)")
     p.add_argument("--interval", type=int, default=60, choices=(15, 60),
                     help="intervallengte in minuten: 15 of 60 (standaard 60)")
     p.add_argument("--lat", type=float, default=52.1326, help="breedtegraad")
@@ -226,13 +304,30 @@ def main(argv: list[str] | None = None) -> int:
 
     # ── Stap 2: pakketten inlezen tegen het manifest (schilwerk, geen kern) ──
     manifest = _laad_manifest()
+    datapakketten_map = zoek_datapakketten_map(args.datapakketten)
+    datapakketten_manifest = _laad_manifest(datapakketten_map) if datapakketten_map else None
     weer_df = None
     weerstations_df = None
     prijzen_df = None
     for pb in plan.pakketbehoeften:
-        pakket = _match_pakket(manifest, pb.naam__str, pb.minimumversie)
+        if pb.naam__str.startswith("weer/"):
+            echt = (zoek_pakket(datapakketten_manifest, pb.naam__str, pb.minimumversie)
+                    if datapakketten_manifest else None)
+            if echt is not None:
+                weer_df, weerstations_df = lees_knmi_weerpakket(datapakketten_map, echt, invoer.interval_min)
+                print(f"  → pakket '{pb.naam__str}' gevonden in {datapakketten_map}")
+                print(f"    landelijk pakket: {len(weerstations_df)} meetpunten, afnemer interpoleert "
+                      "zelf naar zijn locatie (zie kern/geo.py)")
+                print(f"    {echt.get('attributie', '')}")
+                continue
+            waar = datapakketten_map if datapakketten_map else "geen map met datapakketten gevonden"
+            print(f"  [WAARSCHUWING] pakket '{pb.naam__str}' niet gevonden ({waar}); "
+                  f"terugval op het testfixture '{TESTFIXTURE_WEERPAKKET_NAAM}'")
+            pakket = _match_pakket(manifest, TESTFIXTURE_WEERPAKKET_NAAM, TESTFIXTURE_WEERPAKKET_MINVERSIE)
+        else:
+            pakket = _match_pakket(manifest, pb.naam__str, pb.minimumversie)
         pad = PAKKETTEN_DIR / pakket["bestand"]
-        print(f"  → pakket '{pb.naam__str}' gematcht op {pad.name} (versie {pakket['versie']})")
+        print(f"  → pakket '{pakket['naam']}' gematcht op {pad.name} (versie {pakket['versie']})")
         if pakket.get("landelijk"):
             print(f"    landelijk pakket: {pakket.get('aantal_stations', '?')} stations, "
                   "afnemer interpoleert zelf naar zijn locatie (zie kern/geo.py)")
@@ -283,6 +378,10 @@ def main(argv: list[str] | None = None) -> int:
         laad__kWh = uitvoer.intervallen["batterij_laad__W"].sum() * uitvoer.interval_min / 60000.0
         ontlaad__kWh = uitvoer.intervallen["batterij_ontlaad__W"].sum() * uitvoer.interval_min / 60000.0
         print(f"batterij: {laad__kWh:.0f} kWh geladen, {ontlaad__kWh:.0f} kWh ontladen")
+    net__W = uitvoer.intervallen["net_afname__W"]
+    afname__kWh = net__W.clip(lower=0).sum() * uitvoer.interval_min / 60000.0
+    teruglevering__kWh = -net__W.clip(upper=0).sum() * uitvoer.interval_min / 60000.0
+    print(f"net: {afname__kWh:.0f} kWh afgenomen, {teruglevering__kWh:.0f} kWh teruggeleverd")
     print()
     print("samenvatting (eerste kolommen):")
     print(uitvoer.samenvatting.to_string(index=False))

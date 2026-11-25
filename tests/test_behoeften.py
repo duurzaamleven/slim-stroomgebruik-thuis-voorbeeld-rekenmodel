@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from dataclasses import replace
 
-from kern.behoeften import PRIJSPAKKET_NAAM, WEERPAKKET_NAAM, behoeften
+from kern.behoeften import PRIJSPAKKET_NAAM, behoeften, weerpakket_naam
 from kern.model import simuleer
 from kern.parameters import BatterijParameters
 
@@ -19,7 +19,18 @@ def test_behoeften_is_puur(standaard_invoer):
 def test_weerpakket_is_altijd_verplicht(standaard_invoer):
     plan = behoeften(standaard_invoer)
     namen = [p.naam__str for p in plan.pakketbehoeften]
-    assert WEERPAKKET_NAAM in namen
+    assert weerpakket_naam(standaard_invoer.kalenderjaar) in namen
+
+
+def test_weerpakket_is_het_knmi_pakket_van_het_kalenderjaar(standaard_invoer):
+    """Het weer hoort bij een echte datum: het plan vraagt het KNMI-pakket van
+    precies het gevraagde jaar, met dat jaar ook in de dekking."""
+    for jaar in (2023, 2024, 2025):
+        plan = behoeften(replace(standaard_invoer, kalenderjaar=jaar))
+        weer = plan.pakketbehoeften[0]
+        assert weer.naam__str == f"weer/knmi-nl-{jaar}"
+        assert weer.dekking.kalenderjaar == jaar
+        assert weer.dekking.landelijk__bool
 
 
 def test_prijspakket_alleen_bij_prijssignaal(standaard_invoer):
@@ -81,11 +92,11 @@ def test_geen_verrassing_halverwege(standaard_invoer):
     """
     plan = behoeften(standaard_invoer)
     verplichte_pakketten = [p.naam__str for p in plan.pakketbehoeften]
-    assert verplichte_pakketten == [WEERPAKKET_NAAM]
+    assert verplichte_pakketten == [weerpakket_naam(standaard_invoer.kalenderjaar)]
 
     # Precies het pakket dat het plan verplicht noemt, ontbreekt hier, en de
     # kern moet dat direct en netjes melden, zonder een halve berekening.
     uitvoer = simuleer(standaard_invoer, weerdata=None)
     assert uitvoer.status__cat == "onvolledig"
-    assert uitvoer.ontbrekende_behoeften == (WEERPAKKET_NAAM,)
+    assert uitvoer.ontbrekende_behoeften == (weerpakket_naam(standaard_invoer.kalenderjaar),)
     assert uitvoer.intervallen.empty

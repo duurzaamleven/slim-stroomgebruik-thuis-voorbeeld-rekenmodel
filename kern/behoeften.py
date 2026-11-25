@@ -11,7 +11,8 @@ vóórdat er iets te simuleren valt (prefetch, §5.2).
 Twee soorten behoeften, met elk hun eigen dataclass:
 
 * ``PakketBehoefte`` : een open datapakket dat wij zelf maken (het weer- en
-  het prijspakket in ``pakketten/``). Draagt een naam, een minimumversie en
+  het prijspakket; het weerpakket is het echte KNMI-pakket van het
+  kalenderjaar, zie ``WEERPAKKET_NAAM_SJABLOON``). Draagt een naam, een minimumversie en
   een dekking; de kern kent geen URL's (§5.2). Beide pakketten zijn
   **landelijk**: het weerpakket uit privacyoverwegingen (alle KNMI-
   meetpunten, geen reeks per locatie), het prijspakket omdat een prijs nu
@@ -98,14 +99,28 @@ class BehoeftePlan:
 
 #: Naam en minimumversie van het weerpakket: het enige verplichte pakket
 #: (§5.7): zonder weer kan de kern niet rekenen en is er geen zinnige terugval.
-#: Landelijk: alle KNMI-meetpunten, geen reeks per locatie (zie ``kern.geo``
-#: voor de interpolatiestap die daar de consequentie van is).
-WEERPAKKET_NAAM = "weer/synthetisch-uur"
-WEERPAKKET_MINVERSIE = 3
+#: Het is het echte, landelijke KNMI-pakket van het gevraagde kalenderjaar uit
+#: ``slim-stroomgebruik-thuis-datapakketten`` (bijvoorbeeld ``weer/knmi-nl-2024``):
+#: alle meetpunten, geen reeks per locatie (zie ``kern.geo`` voor de
+#: interpolatiestap die daar de consequentie van is, en ``kern.weerpakket``
+#: voor de omzetting van dat pakket naar de vorm die ``simuleer`` verwacht).
+#:
+#: Het weer hoort bij een echte datum, dus het jaar zit in de naam: weer van
+#: 2024 op de tijd-as van 2025 leggen is geen terugval maar een fout.
+#:
+#: Dat manifest kent (nog) geen versienummer per pakket; een pakket zonder
+#: ``versie`` telt als versie 1.
+WEERPAKKET_NAAM_SJABLOON = "weer/knmi-nl-{kalenderjaar}"
+WEERPAKKET_MINVERSIE = 1
 
 #: Het prijspakket is alleen verplicht als de batterij op een prijssignaal stuurt.
 PRIJSPAKKET_NAAM = "prijzen/synthetisch-placeholder"
 PRIJSPAKKET_MINVERSIE = 1
+
+
+def weerpakket_naam(kalenderjaar: int) -> str:
+    """Naam van het weerpakket voor dit kalenderjaar, bijvoorbeeld ``weer/knmi-nl-2024``."""
+    return WEERPAKKET_NAAM_SJABLOON.format(kalenderjaar=int(kalenderjaar))
 
 
 def behoeften(invoer: SimulatieParameters) -> BehoeftePlan:
@@ -117,7 +132,7 @@ def behoeften(invoer: SimulatieParameters) -> BehoeftePlan:
     dekking = Dekking(kalenderjaar=invoer.kalenderjaar, interval_min=invoer.interval_min)
 
     pakketbehoeften: list[PakketBehoefte] = [
-        PakketBehoefte(naam__str=WEERPAKKET_NAAM, minimumversie=WEERPAKKET_MINVERSIE, dekking=dekking),
+        PakketBehoefte(naam__str=weerpakket_naam(invoer.kalenderjaar), minimumversie=WEERPAKKET_MINVERSIE, dekking=dekking),
     ]
     if invoer.batterij_toevoegen__bool and invoer.batterij.stuurregel__cat == "prijssignaal":
         pakketbehoeften.append(

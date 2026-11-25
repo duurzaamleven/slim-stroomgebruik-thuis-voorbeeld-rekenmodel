@@ -59,11 +59,14 @@ zelf onderscheidt (los van het pakket).
 
 **`slim-stroomgebruik-thuis-datapakketten`** (aparte repo, nog niet openbaar). Daar staan:
 
-- `weer/knmi-uur-debilt-2023`: echte KNMI-uurdata voor één meetpunt, heel 2023;
-- `weer/knmi-uur-nl-2023`: echte KNMI-uurdata, **landelijk**, alle 22 meetpunten, heel 2023: dit
-  is het echte pakket waarvoor `kern/geo.py` is geschreven;
-- `prijzen/placeholder-uur-2023`: dezelfde soort synthetische placeholder als hier, maar dan voor
-  een heel jaar, met een uitgebreidere herkomstregistratie.
+- `weer/knmi-nl-2023`, `weer/knmi-nl-2024` en `weer/knmi-nl-2025`: echte KNMI-uurdata,
+  **landelijk**, alle 22 meetpunten, elk een heel kalenderjaar met een paar dagen marge: dit zijn
+  de echte pakketten waarvoor `kern/geo.py` is geschreven, en het behoefteplan vraagt ze bij naam
+  (`weer/knmi-nl-<kalenderjaar>`);
+- `verbruik/alpg-basislast-2024` en `prijzen/placeholder-2024`: een synthetische basislast en een
+  verzonnen prijsreeks voor een heel jaar (het voorbeeldrekenmodel gebruikt ze nog niet).
+
+Hoe je die ophaalt en ermee rekent, staat in de README van deze repo.
 
 Wil je een uitkomst die iets zegt over een echte woning of een echt jaar, gebruik dan die repo,
 niet dit testfixture.
@@ -72,6 +75,6 @@ niet dit testfixture.
 
 De kern-tests (`tests/`) genereren hun eigen weerdata (meerstations, in het geheugen, zie
 `tests/conftest.py`) en zijn dus niet van deze bestanden afhankelijk. Dit CSV-testfixture bestaat
-voor de **schil** (`schil/cli.py`): die matcht tegen `manifest.json` en leest bestanden van schijf,
+voor de **schil** (`schil/cli.py`), als terugval wanneer het echte pakket niet beschikbaar is: die matcht tegen `manifest.json` en leest bestanden van schijf,
 en dat pad moet ook zonder netwerktoegang blijven werken: vandaar kleine, gecommitte bestanden in
 plaats van een download.
